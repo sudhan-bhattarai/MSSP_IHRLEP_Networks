@@ -79,11 +79,11 @@ class Input:
                 self.args['purchase_cost']
                 ),
             }
-        # --> added on 08-20-2024
+        # ---> added on 08-20-2024
         if self.args['landfall'] == 'd':
             self.DIR[4] = self.DIR[4] + \
                 'ST_track_{}/'.format(self.args['ST_track'])
-        # <--
+        # <---
         # Make paths if not already available
         for key, _dir in self.DIR.items():
             os.makedirs(_dir) if not os.path.isdir(_dir) else None
