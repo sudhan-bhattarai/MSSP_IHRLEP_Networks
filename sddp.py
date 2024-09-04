@@ -3,7 +3,6 @@ import gurobipy as gb
 import pandas as pd
 import time
 import json
-import os
 
 import helper
 
@@ -38,7 +37,7 @@ class Model:
         no_integers = True if args["first_stg_opt"] == 2 else False
         m = gb.Model()
         m.setParam("OutputFlag", 0)
-        # ----------------------------- Variables ---------------------------
+        # VARIABLES
         zJ_lst = [data.J, data.T] if delayed else [data.J]
         # Number of zJ variables according to delayed opening option
         Var = {
@@ -67,7 +66,7 @@ class Model:
             name='theta',
             )
         m.update()
-        # ------------------------------- Constraints ------------------------
+        # CONSTRAINTS
         Constr = {}
         Constr['b'] = m.addConstrs(
             (gb.quicksum(Var['y'][i, j] for j in range(data.J))
@@ -78,12 +77,8 @@ class Model:
         # Var['eI'][i, t-1].x for t>0
         Constr['c'] = m.addConstrs(
             (Var['eI'][i]
-             + (gb.quicksum(Var['y'][i, j] for j in range(data.J))
-                if args['demand_opt'] == 1 else
-                data.demand_mssp[0][data.state_space[0][0]][i] *
-                data.INIT['eI'][i]
-                )
-                == data.INIT['eI'][i] for i in range(data.I))
+             + gb.quicksum(Var['y'][i, j] for j in range(data.J))
+             == data.INIT['eI'][i] for i in range(data.I))
             )  # replace RHS by Var['eI'][i, t-1].x for t>0
         Constr['d'] = m.addConstrs(
             (Var['eJ'][j]
@@ -159,7 +154,7 @@ class Model:
             m.addConstr(Var['theta'] == 0)
             m.update()
 
-        # OBJECTIVE ------------------------------------------------------
+        # OBJECTIVE
         # 1. Define fixed-cost at first stage for different options
         if first_stage is True:
             # One time fixed setup cost of Shelters
@@ -307,10 +302,7 @@ class Model:
                     rhs, XI[i] * max(x_sol['eI'][i], 0)
                     )
                 self.m._constrs['c'][i].setAttr(
-                    rhs, (max(x_sol['eI'][i], 0)
-                          if self.args['demand_opt'] == 1 else
-                          max(x_sol['eI'][i] * (1 - XI[i]), 0)
-                          )
+                    rhs, max(x_sol['eI'][i], 0)
                     )
             for j in range(self.data.J):
                 self.m._constrs['d'][j].setAttr(
@@ -386,13 +378,6 @@ def make_models(data, args):
     return models
 
 
-def export_models(models, data):
-    path = data.DIR[4] + 'Models/'
-    os.makedirs(path) if os.path.isdir(path) is False else None
-    for key, model in models.items():
-        model.m.write(path + f'{key}.mps')
-
-
 class SDDP:
     def __init__(self, data, initial_models, **kwargs):
         self.data = data
@@ -454,11 +439,7 @@ class SDDP:
             lhs1 = sum(
                 DUALS['b'][i] * X['eI'][i] * XI[i] for i in range(self.data.I)
                 )
-            lhs2 = sum(DUALS['c'][i] * (
-                X['eI'][i] if self.args['demand_opt'] == 1 else
-                X['eI'][i] * (1 - XI[i])
-                )
-                for i in range(self.data.I))
+            lhs2 = sum(DUALS['c'][i] * X['eI'][i] for i in range(self.data.I))
             lhs3 = sum(DUALS['d'][j] * X['eJ'][j] for j in range(self.data.J))
             lhs4 = sum(DUALS['g'][j] * -X['lJ'][j] for j in range(self.data.J))
             lhs5 = sum(DUALS['h'][j] * -X['lJ'][j] for j in range(self.data.J))
@@ -591,9 +572,8 @@ class SDDP:
         export['zJ'] = zJ_sol
         # Export
         with open(self.data.DIR[4] +
-                  'sddp_{}_demand_opt{}.json'.format(
+                  'sddp_{}.json'.format(
                       self.args['method'],
-                      self.args['demand_opt'],
                       ), 'w'
                   ) as file:
             json.dump(export, file, indent=4)
@@ -723,14 +703,14 @@ class SDDP:
             cost.append(df)
         result = pd.concat(cost).rename_axis('s').round(2)
         result.to_csv(
-            self.data.DIR[4] + "mssp_eval_mc_tree_{}_demand_opt{}.csv".format(
-                self.args['method'], self.args['demand_opt'],
+            self.data.DIR[4] + "mssp_eval_mc_tree_{}.csv".format(
+                self.args['method'],
                 )
             )
         summary = helper.summerize_result(result)
         summary.to_csv(
-            self.data.DIR[4] + "summary_mssp_eval_mc_tree_{}_demand_opt{}.csv".format(
-                self.args['method'], self.args['demand_opt'],
+            self.data.DIR[4] + "summary_mssp_eval_mc_tree_{}.csv".format(
+                self.args['method'],
                 )
             )
         return cost
@@ -832,9 +812,6 @@ class SDDP:
         st_0 = self.data.state_space[0][0]
         start_time = time.time()
         test_time = 0.0
-        # new (save sample path solutions) begins ------------
-        solutions = {s : {} for s in range(n_oos)}
-        # new (save sample path solutions) ends ------------
         for s in range(n_oos):
             test_time = time.time() - start_time
             if test_time > self.args['time_limit_test']:
@@ -853,26 +830,9 @@ class SDDP:
                     model.update_rhs(x_sol=sol, XI=xi)
                     model.m.optimize()
                     sol = model.get_sol(state_vars_only=False, cb=False)
-                    # new (save sample path solutions) begins ------------
-                    xKJ = {j[1]: val for j, val in sol['xKJ'].items()}
-                    sol_temp = {
-                        'lJ': sol['lJ'],
-                        'xKJ': xKJ,
-                        'eJ': sol['eJ'],
-                        'eI': sol['eI'],
-                    }
-                    solutions[s][t] = sol_temp
-                    # new (save sample path solutions) ends ------------
                     cost_t = model.cost_component()
                     for key, val in cost_t.items():
                         cost_components[key] += val
-            # # new (save sample path solutions) begins ------------
-            # with open(
-            #     self.data.DIR[4] + 'model_sol_mssp.json',
-            #     'w'
-            #     ) as file:
-            #     json.dump(solutions, file, indent=4)
-            # # new (save sample path solutions) ends ------------
             # Create DataFrame of OOS cost components.
             df_comp = pd.DataFrame(cost_components, index=[s])
             df_comp['Total'] = df_comp.sum(axis=1)
@@ -881,13 +841,13 @@ class SDDP:
         # Export results of all out-of-samples
         result = pd.concat(oos_cost_components).rename_axis('s').round(2)
         result.to_csv(
-            self.data.DIR[4] + "mssp_eval_oos_heur{}_{}_demand_opt{}.csv".format(
-                heur, self.args['method'], self.args['demand_opt'],
+            self.data.DIR[4] + "mssp_eval_oos_heur{}_{}.csv".format(
+                heur, self.args['method'],
                 ))
         summary = helper.summerize_result(result)
         summary.to_csv(
-            self.data.DIR[4] + "summary_mssp_eval_oos_heur{}_{}_demand_opt{}.csv".format(
-                heur, self.args['method'], self.args['demand_opt'],
+            self.data.DIR[4] + "summary_mssp_eval_oos_heur{}_{}.csv".format(
+                heur, self.args['method'],
                 ))
         return oos_cost_components
 

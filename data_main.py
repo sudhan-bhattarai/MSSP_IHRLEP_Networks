@@ -44,7 +44,7 @@ class Data:
             )
         LogisticsParams.get_params(mode='read')
         # Demand data
-        self.args['fix_along_err'] = bool(self.args['fix_along_err'])
+        # self.args['fix_along_err'] = bool(self.args['fix_along_err'])
         DE = demand.Demand(self.args, FE, LogisticsParams)
         DE.read_demand_data()
         # Copy all attributes

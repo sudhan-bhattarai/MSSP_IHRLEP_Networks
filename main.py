@@ -3,9 +3,8 @@ import two_stage
 import sddp
 import results_analysis as ra
 import commands
+from plot_gis import Plot
 
-import pandas as pd
-import os
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter as arg_help_format
 import warnings
@@ -34,11 +33,34 @@ args = vars(parser.parse_args())
 # correct wrong combinations
 if args['model'] == '2ssp':
     if args['eval'] not in ['mc_tree', 'oos']:
+        print('argument \'--eval\' changed to: \'oos\'')
         args['eval'] = 'oos'
+else: # mssp
+    args['eval'] = 'both'
+    if args['method'] == 'ext':
+        print('argument \'--method\' changed to: \'bb\'')
+        args['method'] = 'bb'
+
+if args['hurricane'] == 'Ian':
+    if args['landfall'] == 'd':
+        print('argument \'--landfall\' changed to: \'r\'')
+        args['landfall'] = 'r'
+    if args['instance'] != 3:
+        print('argument \'--instance\' changed to: \'3\'')
+        args['instance'] = 3
+else: # Florence
+    if args['landfall'] == 'r':
+        print('argument \'--landfall\' changed to: \'d\'')
+        args['landfall'] = 'd'
+    if args['oos_heur'] == 2:
+        print('argument \'--oos_heur\' changed to: \'1\'')
+        args['oos_heur'] == 1
+
 
 if __name__ == "__main__":
 
-    print("Solving for: ")
+    print("Running main.py with:")
+    print('.' * 30)
     print("{:<20} {:<20}".format("arg", "value"))
     print('.' * 30)
     for key, value in args.items():
@@ -52,41 +74,20 @@ if __name__ == "__main__":
     else:
         data.read_data()
 
-    if args["task"] == "read_data":
-        data_attrs = sorted(list(vars(data).keys()))
-        print("\n Data attributes: {} \n".format(data_attrs))
-        # print(data.demand_in_sample, '\n', data.demand_oos)
-        print(data.demand_oos.keys(), data.demand_in_sample.keys())
-
     if args["task"] == "solve":
-        data.n_itr_lb_rate = 100
         if args["model"] == "mssp":
             sddp.solve_mssp(data, **args)
 
-        elif args["model"] == "rh":
-            RH = two_stage.RollingHorizon(data, args)
-            RH.solve_rolling_horizon()
-
         elif args["model"] == "2ssp":
-            # if args['demand_opt'] == 2:
-            #     data.DIR[4] = data.DIR[4] + '2SSP-alternative/'
-            #     os.makedirs(data.DIR[4]) \
-            #         if os.path.isdir(data.DIR[4]) is False else \
-            #         None
             Model2SSP = two_stage.SolveStaticTwoStage(data, args)
-            # # Model2SSP.solve_static_2ssp()
+            Model2SSP.solve_static_2ssp()
             Model2SSP.oos_test_anticipative()
-            # Model2SSP.oos_test_myopic()
-
-        elif args["model"] == "mv":
-            print('incomplete work on reactive_plan.py')
-            exit(0)
-            # reactive_plan.solve_mvp(data, args)
-
+            Model2SSP.oos_test_myopic()
+    # archive >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     elif args["task"] == "plot":
-        from plot_gis import Plot
         PLOT = Plot(data, args)
         PLOT.plot()
 
     elif args["task"] == "analyze_result":
         ra.summary(data.DIR[4])
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

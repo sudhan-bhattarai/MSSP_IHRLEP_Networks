@@ -8,33 +8,41 @@ import pandas as pd
 options = {
     "task": {
         "type": str,
-        "choices": ["solve", "create_data", "read_data", "analyze_result", "plot"],
+        "choices": ["solve", "create_data"],
         "default": "solve",
-        "help": "solve: to solve models; create_data: to create instances read_data: to display all variables of data classanalyze_result: to plot results of OOS test"
+        "help": "solve: to solve models (mssp or 2ssp); create_data: to create instances"
     },
     "hurricane": {
         "type": str,
         "choices": ["Florence", "Ian"],
         "default": "Ian",
-        "help": "Name of storm (Florence or Ian)"
+        "help": "Name of hurricanr (Florence or Ian)"
     },
     "landfall": {
         "type": str,
         "choices": ['r', 'd'],
         "default": 'r',
-        "help": "hurricane landfall type considered. r=random; d=deterministic (only applicable to Florence)."
+        "help": "hurricane landfall type considered. r=random; d=deterministic. " +
+         "d is only applicable to hurricane Florence and r only to Ian. " +
+         "This command is only used to clarify the nature of two case studies. " +
+         "It is useless in operation."
     },
     "data_opt": {
         "type": int,
         "choices": [1, 2, 3, 4],
         "default": 2,
-        "help": "1 if only creating forecast error data; 2 if only creating demand data; 3 if only creating logistic parameters data; 4 if creating all data at once"
+        "help": "This arg is only applicable to task = create_data. " +
+                "option = 1 if creating data related to forecast errors only, " +
+                "2 if creating demand data based on pre-existing forecast error data, " +
+                "3 if only creating logistic parameters data, " +
+                "4 if creating all data at once."
     },
     "model": {
         "type": str,
-        "choices": ["mv", "2ssp", "rh", "mssp"],
+        "choices": ["2ssp", "mssp"],
         "default": "mssp",
-        "help": "Model to solve (mean_value, 2ssp, rh, or mssp)"
+        "help": "This arg is needed when task = solve. " +
+                "The options are models to solve (2ssp, or mssp)."
     },
     "delay": {
         "type": int,
@@ -46,11 +54,13 @@ options = {
         "type": str,
         "choices": ["bb", "bc", "ext"],
         "default": "bc",
-        "help": "Algorithm: bb (branch & bound); bc (branch & cut); ext (extended model (2ssp only))"
+        "help": "Algorithm: bb (naive branch & bound); "+
+        "bc (branch & bound with lazy cuts through callback); "+
+        "ext (extended model (works on 2ssp model only))"
     },
     "instance": {
         "type": int,
-        "choices": [1, 2, 3, 4, 5],
+        "choices": [1, 2, 3],
         "default": 3,
         "help": "Instance index"
     },
@@ -66,36 +76,11 @@ options = {
         "default": 1,
         "help": "1 if the first-stage problem is a mixed-integer or,2 if all SPs are open at the beginning and the first-stage problem is a continuous LP"
     },
-    "uboption": {
-        "type": str,
-        "choices": ["D", "S"],
-        "default": "S",
-        "help": "Upper bound type for SDDP. D for detrministic (not fully developed yet) ; S for statistical"
-    },
     "oos_heur": {
         "type": int,
         "choices": [1, 2],
         "default": 1,
-        "help": "Heuristic option to do OOS test. 1 if solving closest transient/absorbing states from the tree for transient/absorbing OOS state. 2 if solving the closest cost function regardless of transient/absorbing characteristic."
-    },
-    "plot_opt": {
-        "type": int,
-        "choices": [1, 2, 3, 4],
-        "default": 1,
-        "help": "Options of plotting GIS data. 1 for facilities only, 2 for facilities and scenarios, 3 for a scenario, and mc_ian, 4 for activated SPs."
-    },
-    "demand_opt": {
-        "type": int,
-        "choices": [1, 2],
-        "default": 1,
-        "help": "1 if demand is represented as a fraction of the remaining population; 2 if demand is represented as the total evacuation demand"
-    },
-    "fix_along_err": {
-        "type": int,
-        "choices": [0, 1],
-        "default": 0,
-        "help": "1 if along error is fixed to zero; 0 o/w. Only works for " +
-        "hurricane Florence with random landfall case."
+        "help": "Heuristic option to do OOS test for MSSP model. 1 if solving closest transient/absorbing states from the tree for transient/absorbing OOS state. 2 if solving the closest cost function regardless of transient/absorbing characteristic."
     },
     "ST_track": {
         "type": int,
@@ -104,7 +89,6 @@ options = {
         "help": "The number of MC States to use for track-error in Florence case with "+
         "deterministic landfall."
     },
-
 }
 
 
@@ -142,7 +126,7 @@ continuous_args = {
     "n_UB_samples": {
         "type": int,
         "default": 1000,
-        "help": "Number of sample to use for statistical UB"
+        "help": "Number of sample to use for statistical UB in MSSP model."
     },
     "n_oos": {
         "type": int,

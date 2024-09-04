@@ -7,7 +7,6 @@ import json
 import helper
 import copy
 
-import data_forecast_error_scenarios as fe_scen
 
 BI = gb.GRB.BINARY
 CT = gb.GRB.CONTINUOUS
@@ -67,10 +66,9 @@ class Model2SSP:
             var['u'][i, t_] = M.addVar(
                 vtype=CT, lb=0, ub=INF, name=f'u{i}{t_}'
                 )
-            if self.args['demand_opt'] == 1:
-                var['eI'][i, t_] = M.addVar(
-                    vtype=CT, lb=0, ub=INF, name=f'eI{i}{t_}'
-                    )
+            var['eI'][i, t_] = M.addVar(
+                vtype=CT, lb=0, ub=INF, name=f'eI{i}{t_}'
+                )
             for j in range(self.data.J):
                 var['y'][i, j, t_] = M.addVar(
                     vtype=CT, lb=0, ub=INF, name=f'y{i}{j}{t_}'
@@ -100,34 +98,28 @@ class Model2SSP:
             var['theta'][s] = M.addVar(
                 vtype=CT, lb=0, ub=INF, name=f'theta{s}'
                 )
-        # ------------------ first-stage constraints -------------------------
+        # First-stage constraints
         for t in self.init.T_PRIME:
             for j in range(self.data.J):
                 constrs["1st_stg"].append(M.addConstr(
                     var['lJ'][j, t] <=
                     self.data.phi * self.data.q_J[j] * var['zJ'][j, t]
                     ))
-                # ---------- Opening of SPs decisions ------------------------
+                # Opening of SPs decisions
                 if self.args["first_stg_opt"] == 1:
                     # At t' > 0; use integer solutions from SLAM at t'=0
                     if t_ == 0:
-                        if self.args['model'] == 'rh':
-                            constrs["1st_stg"].append(M.addConstr(
+                        if t > t_:
+                            if self.args["delay"] == 1:
+                                constrs["1st_stg"].append(M.addConstr(
                                     var['zJ'][j, t]
-                                    == self.init.zJ_hat[j, t]
+                                    >= var['zJ'][j, t-1]
                                     ))
-                        else:
-                            if t > t_:
-                                if self.args["delay"] == 1:
-                                    constrs["1st_stg"].append(M.addConstr(
-                                        var['zJ'][j, t]
-                                        >= var['zJ'][j, t-1]
-                                        ))
-                                else:
-                                    constrs["1st_stg"].append(M.addConstr(
-                                        var['zJ'][j, t]
-                                        == var['zJ'][j, t-1]
-                                        ))
+                            else:
+                                constrs["1st_stg"].append(M.addConstr(
+                                    var['zJ'][j, t]
+                                    == var['zJ'][j, t-1]
+                                    ))
                     else:
                         constrs["1st_stg"].append(M.addConstr(
                             var['zJ'][j, t] == self.init.zJ_hat[j, t]
@@ -136,33 +128,18 @@ class Model2SSP:
                     constrs["1st_stg"].append(
                         M.addConstr(var['zJ'][j, t] == 1)
                         )
-                # TODO: fill up adaptive 'z' for RH case
-                # If adaptive SPs opening is allowed in RH
-                # else:
-                #     if t == t_:
-                #         constrs["1st_stg"].append(M.addConstr(
-                #             var['zJ'][j, t] >= self.init.zJ_hat[j, t_]
-                #             ))
-                #     else:
-                #         constrs["1st_stg"].append(M.addConstr(
-                #             var['zJ'][j, t] >= var['zJ'][j, t-1]
-                #             ))
-        # TODO Avoid two of the following constraints for 
-        # demand_opt = 2.
         for i in range(self.data.I):
             constrs["1st_stg"].append(M.addConstr(
                 gb.quicksum(var['y'][i, j, t_] for j in range(self.data.J))
                 + var['u'][i, t_] ==
-                self.init.demand_tprime[i] *
-                (self.init.eI_hat[i, t_] if self.args['demand_opt'] == 1 else 1)
+                self.init.demand_tprime[i] * self.init.eI_hat[i, t_]
                 ))
-            if self.args['demand_opt'] == 1:
-                constrs["1st_stg"].append(M.addConstr(
-                    var['eI'][i, t_] ==
-                    self.init.eI_hat[i, t_]
-                    - gb.quicksum(var['y'][i, j, t_]
-                                for j in range(self.data.J))
-                    ))
+            constrs["1st_stg"].append(M.addConstr(
+                var['eI'][i, t_] ==
+                self.init.eI_hat[i, t_]
+                - gb.quicksum(var['y'][i, j, t_]
+                            for j in range(self.data.J))
+                ))
         for j in range(self.data.J):
             constrs["1st_stg"].append(M.addConstr(
                 var['xJJ'][j, j, t_] == 0
@@ -206,7 +183,7 @@ class Model2SSP:
                 self.data.phi * self.data.q_J[j] * var['zJ'][j, t_]
                 ))
         M.update()
-        # ----------------------- first-stage objective -------------------
+        # First-stage objective
         objs_dict = self.obj(M, option=1)
         obj = sum([sum(cost_vector) for cost_vector in objs_dict.values()])
         M.setObjective(
@@ -321,13 +298,12 @@ class Model2SSP:
         else:
             var = M._vars
             constr = M._constrs
-        # ---------------- second-stage variables ----------------------------
+        # Second-stage variables
         for i in range(self.data.I):
-            if self.args['demand_opt'] == 1:
-                for t in self.init.T_PRIME:
-                    var['eI'][i, t] = M.addVar(
-                        vtype=CT, lb=0, ub=INF, name=f'eI{i}{t}'
-                        )
+            for t in self.init.T_PRIME:
+                var['eI'][i, t] = M.addVar(
+                    vtype=CT, lb=0, ub=INF, name=f'eI{i}{t}'
+                    )
             for t in self.init.T_2ND[s]:
                 var['u'][i, t] = M.addVar(
                     vtype=CT, lb=0, ub=INF, name=f'u{i}{t}'
@@ -359,26 +335,24 @@ class Model2SSP:
                         vtype=CT, lb=0, ub=INF, name=f'xKJ{k}{j}{t}'
                         )
             M.update()
-        # ------------------ second-stage constraints -------------------
+        # Second-stage constraints
         for i in range(self.data.I):
             for t in self.init.T_2ND[s]:
                 constr['a'][i, t] = M.addConstr(
                     gb.quicksum(var['y'][i, j, t] for j in range(self.data.J))
                     + var['u'][i, t] ==
-                    self.init.demand_insample[s][t][i] *
-                    (var['eI'][i, t-1] if self.args['demand_opt'] == 1 else 1)
+                    self.init.demand_insample[s][t][i] * var['eI'][i, t-1]
                     )
-        if self.args['demand_opt'] == 1:
-            constr['b'] = M.addConstrs((
-                var['eI'][i, t] == var['eI'][i, t-1]
-                - gb.quicksum(var['y'][i, j, t] for j in range(self.data.J))
-                for i in range(self.data.I) for t in self.init.T_2ND[s]
-            ))
-            constr['c'] = M.addConstrs((
-                var['eI'][i, self.init.t] == (M._vars['eI'][i, self.init.t]
-                                              if extended else 0)
-                for i in range(self.data.I) for t in [self.init.t]
-            ))
+        constr['b'] = M.addConstrs((
+            var['eI'][i, t] == var['eI'][i, t-1]
+            - gb.quicksum(var['y'][i, j, t] for j in range(self.data.J))
+            for i in range(self.data.I) for t in self.init.T_2ND[s]
+        ))
+        constr['c'] = M.addConstrs((
+            var['eI'][i, self.init.t] == (M._vars['eI'][i, self.init.t]
+                                            if extended else 0)
+            for i in range(self.data.I) for t in [self.init.t]
+        ))
         for j in range(self.data.J):
             constr['e'][j, self.init.t] = M.addConstr(
                 var['eJ'][j, self.init.t]
@@ -460,8 +434,7 @@ class Model2SSP:
         t_ = self.init.t  # starting period (t_prime) of the SLAM
         dual = self.sub_prob[s]._duals
         constr = self.sub_prob[s]._constrs
-        if self.args['demand_opt'] == 1:
-            dual["c"] = list(constr["c"][i, t_].pi for i in range(self.data.I))
+        dual["c"] = list(constr["c"][i, t_].pi for i in range(self.data.I))
         dual["e"] = list(constr["e"][j, t_].pi for j in range(self.data.J))
         for t in self.init.T_2ND[s]:
             for j in range(self.data.J):
@@ -476,22 +449,21 @@ class Model2SSP:
         """
         t_ = self.init.t
         s = m._s
-        if self.args['demand_opt'] == 1:
-            for i in range(self.data.I):
-                for t in self.init.T_2ND[s]:
-                    m.remove(m._constrs['a'][i, t])
-            m.update()
-            for i in range(self.data.I):
-                for t in self.init.T_2ND[s]:
-                    m._constrs['a'][i, t] = m.addConstr(
-                        gb.quicksum(m._vars['y'][i, j, t]
-                                    for j in range(self.data.J))
-                        + m._vars['u'][i, t]
-                        == xi[t][i] * m._vars['eI'][i, t-1])
-            m.update()
+        for i in range(self.data.I):
+            for t in self.init.T_2ND[s]:
+                m.remove(m._constrs['a'][i, t])
+        m.update()
+        for i in range(self.data.I):
+            for t in self.init.T_2ND[s]:
+                m._constrs['a'][i, t] = m.addConstr(
+                    gb.quicksum(m._vars['y'][i, j, t]
+                                for j in range(self.data.J))
+                    + m._vars['u'][i, t]
+                    == xi[t][i] * m._vars['eI'][i, t-1])
+        m.update()
 
-            for i in range(self.data.I):
-                m._constrs['c'][i, t_].setAttr(rhs, master_sol['eI'][i, t_])
+        for i in range(self.data.I):
+            m._constrs['c'][i, t_].setAttr(rhs, master_sol['eI'][i, t_])
 
         for j in range(self.data.J):
             m._constrs['e'][j, t_].setAttr(rhs, master_sol['eJ'][j, t_])
@@ -511,7 +483,7 @@ class Model2SSP:
                 m._constrs['i'][j, t].setAttr(rhs, rhs_ci)
         m.update()
 
-    def sub_prob_test(self, xi_test, rnn_test):
+    def sub_prob_test(self, xi_test):
         # keep only one sub-problem for the test of an 'oos'
         if len(self.sub_prob) > self.data.S:
             self.sub_prob.remove(self.sub_prob[-1])
@@ -541,16 +513,7 @@ class Model2SSP:
             ) for t in self.init.T_PRIME[ts + 1:])
         # total cost
         obj_oos['Total'] = sum(obj_oos.values())
-        # solution (added on July 24, 2024) begins -----------------------
-        sol_test_model = self.solution(self.sub_prob[-1])
-        xKJ = {j[1:]: val for j, val in sol_test_model['xKJ'].items()}
-        sol_temp = {
-            'xKJ': xKJ,
-            'eJ': sol_test_model['eJ'],
-            'eI': sol_test_model['eI'],
-        }
-        # solution (added on July 24, 2024) ends -------------------------
-        return obj_oos, sol_temp
+        return obj_oos
 
 
 class SolveSLAM:
@@ -602,14 +565,7 @@ class SolveSLAM:
                 self.data.phi * self.data.q_J[j] * X['zJ'][j, t]
                 ) for j in range(self.data.J)) for t in sec_stg_periods[s]),
             ))
-        if self.args['demand_opt'] == 1:
-            ax = ax + [sum(dual['c'][i] * X['eI'][i, t]
-                           for i in range(self.data.I))]
-        else:
-            ax = ax + [sum(sum(
-                dual['a'][i, t] * self.init.demand_insample[s][t][i]
-                for i in range(self.data.I)
-                ) for t in sec_stg_periods[s])]
+        ax = ax + [sum(dual['c'][i] * X['eI'][i, t] for i in range(self.data.I))]
         return [sum(ax), ax]
 
     def export_and_print(self, method, write):
@@ -658,11 +614,10 @@ class SolveSLAM:
         for key, val in export.items():
             print(f'{key}: {val}')
         if write is True:
-            with open(self.data.DIR[4] + '{}_{}_{}_demand_opt{}.json'.format(
+            with open(self.data.DIR[4] + '{}_{}_{}.json'.format(
                 self.args['model'],
                 method,
                 self.args['eval'],
-                self.args['demand_opt'],
             ), 'w') as file:
                 json.dump(export, file, indent=4)
 
@@ -782,8 +737,8 @@ class SolveSLAM:
 def read_first_stage_result(data, args):
     """After solving the static 2SSP model, read the first stage result."""
     with open(
-        data.DIR[4] + '{}_{}_{}_demand_opt{}.json'.format(
-            args['model'], args['method'], args['eval'], args['demand_opt'],
+        data.DIR[4] + '{}_{}_{}.json'.format(
+            args['model'], args['method'], args['eval'],
             ),
         'r') as file:
         static_2ssp_result = json.load(file)
@@ -846,13 +801,7 @@ class SolveStaticTwoStage:
         init.T_PRIME = list(range(self.data.T))
         if eval_type == 'oos':
             init.ts = self.data.ts_in_sample
-            if self.args['demand_opt'] == 1:
-                init.demand_insample = self.data.demand_in_sample
-            else:
-                init.demand_insample = helper.compute_total_demand(
-                    self.data, self.data.demand_in_sample,
-                    )
-        # TODO : change mc_tree demand according to self.args['demand_opt']
+            init.demand_insample = self.data.demand_in_sample
         elif eval_type == 'mc_tree':
             init.ts = [len(self.data.in_sample_from_tree_2ssp[s]) - 1
                        for s in range(self.data.S)]
@@ -863,9 +812,7 @@ class SolveStaticTwoStage:
                     state = tuple(state)
                     demand = self.data.demand_mssp[t][state]
                     demand_insample[s][t] = demand
-            init.demand_insample = helper.compute_total_demand(
-                self.data, demand_insample
-            )
+            init.demand_insample = demand_insample
         init.T_2ND = {
             s: init.T_PRIME[1: init.ts[s] + 1]
             for s in range(self.data.S)
@@ -881,7 +828,7 @@ class SolveStaticTwoStage:
         solve_slam.solve()
         solve_slam.export_and_print(method=self.args['method'], write=True)
 
-    def oos_test_anticipative(self, rnn_test=False):
+    def oos_test_anticipative(self):
         init = InitSLAM(self.data)
         self.update_static_2ssp_init(init, eval_type=self.args['eval'])
         solve_slam = SolveSLAM(self.data, init, **self.args)
@@ -900,16 +847,8 @@ class SolveStaticTwoStage:
                     }
                     for s in range(self.args['n_oos'])
                     }
-        if self.args['demand_opt'] == 1:
-            oos_demand = oos_demand_frac
-        else:
-            oos_demand = helper.compute_total_demand(
-                self.data, oos_demand_frac
-                )
+        oos_demand = oos_demand_frac
         start_time = time.time()
-        # solution export begins ----------------------------------------
-        sols_export = {}
-        # solution export ends   ----------------------------------------
         print('-' * 40, '\n2SSP-anticipative OOS cost \n',)
         for so in range(self.args["n_oos"]):
             if time.time() - start_time > self.args["time_limit_test"]:
@@ -919,44 +858,30 @@ class SolveStaticTwoStage:
             elif self.args["eval"] == "mc_tree":
                 ts = len(self.data.test_samples_from_tree[so]) - 1
             demand = oos_demand[so]
-            demand = helper.compute_total_demand(self.data, {0: demand})
             # Add test sample cost
             solve_slam.slam.init.demand_insample[self.data.S] = demand
             solve_slam.slam.init.T_2ND[self.data.S] = init.T_PRIME[1: ts + 1]
-            obj, sol_temp = solve_slam.slam.sub_prob_test(
-                demand, rnn_test=rnn_test,
+            obj = solve_slam.slam.sub_prob_test(
+                demand
                 )
             print('s={} \t cost={:.2f}'.format(so, obj['Total']))
-            sols_export[so] = sol_temp
-            if rnn_test is True:
-                sol = solve_slam.slam.solution(m=solve_slam.slam.sub_prob[-1])
-                test_result.append(sol)
-
-            else:
-                test_result.append(pd.DataFrame(obj, index=[so]))
-                result = pd.concat(test_result).rename_axis("s").round(2)
-                result.to_csv(
-                    self.data.DIR[4] +
-                    "2ssp_eval_{}_{}.csv".format(
-                        self.args["eval"],
-                        self.args['method'],
-                        )
+            test_result.append(pd.DataFrame(obj, index=[so]))
+            result = pd.concat(test_result).rename_axis("s").round(2)
+            result.to_csv(
+                self.data.DIR[4] +
+                "2ssp_eval_{}_{}.csv".format(
+                    self.args["eval"],
+                    self.args['method'],
                     )
-                summary = helper.summerize_result(result)
-                summary.to_csv(
-                    self.data.DIR[4] +
-                    "summary_2ssp_eval_{}_{}.csv".format(
-                        self.args["eval"],
-                        self.args['method'],
-                        )
+                )
+            summary = helper.summerize_result(result)
+            summary.to_csv(
+                self.data.DIR[4] +
+                "summary_2ssp_eval_{}_{}.csv".format(
+                    self.args["eval"],
+                    self.args['method'],
                     )
-                # new (July 24, 2024) begins -------------------------------
-                with open(
-                    self.data.DIR[4] + 'model_sol_anticipative.json', 'w',
-                    ) as file:
-                    export = transform_keys(sols_export)
-                    json.dump(export, file, indent=4)
-                # new (July 24, 2024) ends --------------------------------
+                )
         print('-' * 40)
         return test_result
 
@@ -1017,9 +942,7 @@ class SolveStaticTwoStage:
             gb.quicksum(var['y'][i, j] for j in range(self.data.J))
             + var['u'][i]
             ==
-            init['oos_demand_at_t'][i] * (
-                init['eI'][i] if self.args['demand_opt'] == 1 else 1
-                )
+            init['oos_demand_at_t'][i] * init['eI'][i]
             for i in range(self.data.I)
             ))
         if self.args['oos_heur'] == 2:
@@ -1086,11 +1009,10 @@ class SolveStaticTwoStage:
         sol = {}
         for v_name, v_dict in var.items():
             sol[v_name] = {index: val.x for index, val in v_dict.items()}
-        if self.args['demand_opt'] == 1:
-            sol['eI'] = list(
-                init['eI'][i] - sum(sol['y'][i, j] for j in range(self.data.J))
-                for i in range(self.data.I)
-            )
+        sol['eI'] = list(
+            init['eI'][i] - sum(sol['y'][i, j] for j in range(self.data.J))
+            for i in range(self.data.I)
+        )
         cost = self.deterministic_model_cost(var=sol)
         return cost, sol, comp_time
 
@@ -1152,13 +1074,6 @@ class SolveStaticTwoStage:
             in_sample_sol = self.get_insample_sol()
         oos_cost = []
         start_time = time.time()
-        oos_demand_frac = {
-            s: self.data.demand_oos[s]
-            for s in range(self.args['n_oos'])
-            }
-        # export model solution begins ------------------------------------
-        solution = {s: {} for s in range(self.args['n_oos'])}
-        # export model solution ends --------------------------------------
         print('-' * 40, '\n2SSP-myopic OOS cost \n',)
         for s in range(self.args['n_oos']):
             if self.args['oos_heur'] == 2:
@@ -1177,7 +1092,6 @@ class SolveStaticTwoStage:
                 ts = self.data.ts_oos[s]
                 demand = self.data.demand_oos[s]
             else:
-                # TODO do the same (demand recomputation) for mc_tree
                 ts = len(self.data.test_samples_from_tree[s]) - 1
                 demand = []
                 for t, state in enumerate(self.data.test_samples_from_tree[s]):
@@ -1200,13 +1114,6 @@ class SolveStaticTwoStage:
                 sol = sol_t
                 for name, val in cost_s.items():
                     cost_s[name] = val + cost_t[name]
-                # export model solution begins ------------------------------
-                solution[s][t] = {
-                    'xKJ': sol['xKJ'],
-                    'eJ': sol['eJ'],
-                    'eI': sol['eI'],
-                }
-                # export model solution ends --------------------------------
             cost_s['Relief Inventory'] = sum(sum(
                 self.data.c_invR_J[j] * self.sol_t0['lJ'][j, t]
                 for j in range(self.data.J))
@@ -1214,161 +1121,6 @@ class SolveStaticTwoStage:
             cost_s['Total'] = sum(cost_s.values())
             oos_cost.append(pd.DataFrame(cost_s, index=[s]))
             print('s = {} \t cost = {:.2f}'.format(s, cost_s['Total']))
-            # export model solution begins ------------------------------
-            with open(self.data.DIR[4] + 'model_sol_myopic.json', 'w') as file:
-                json.dump(transform_keys(solution), file, indent=4)
-            # export model solution ends --------------------------------
         print('-' * 40)
         summary = self.export_oos_result(oos_cost)
         print('\nSummary: \n', summary)
-
-def transform_keys(d):
-    if isinstance(d, dict):
-        return {str(k): transform_keys(v) for k, v in d.items()}
-    return d
-
-class RollingHorizon:
-    def __init__(self, data, args):
-        self.data = data
-        self.args = args
-        result_1st_stg = read_first_stage_result(data, args)
-        self.sol_t0, self.cost_t0, self.comp_time, _ = result_1st_stg
-        print('\nStatic 2ssp cost at t=0 is {} \n'.format(
-            sum(self.cost_t0.values())))
-
-    def in_sample_scen_for_slam(self, s, t):
-        # generate in-sample demand and t_s.
-        if self.args['eval'] == 'oos':
-            # generate forecast error (fe) samples first.
-            fe_in_samples = {}
-            for err in ['intensity', 'track']:
-                fe_in_samples[err] = fe_scen.createErrorSamples(
-                    data=self.data,
-                    err=err,
-                    S=self.data.S,
-                    t=t,
-                    oos_err_at_t=self.data.oos_err[err][s][t]
-                    )
-            demand, _, _, ts = data_demand_mapping.createDemand(
-                data=self.data,
-                err=fe_in_samples,
-                S=self.data.S,
-                tprime=t,
-                )
-        else:
-            ts = [self.data.T - 1 for s in range(self.data.S)]
-            demand = {scen: {} for scen in range(self.data.S)}
-            sample_dict = {scen: {} for scen in range(self.data.S)}
-            for scen in range(self.data.S):
-                state = self.data.test_samples_from_tree[s][t]
-                sample_dict[scen][t] = state
-                for t2 in range(t + 1, self.data.T):
-                    s_ = sample_dict[scen][t2 - 1]
-                    indices = range(len(self.data.state_space[t2]))
-                    i = np.random.choice(
-                        indices,
-                        p=list(self.data.pi_mssp[t2-1][s_].values())
-                        )
-                    state_sampled = self.data.state_space[t2][i]
-                    sample_dict[scen][t2] = state_sampled
-                    demand[scen][t2] = self.data.demand_mssp[t2][state_sampled]
-        return demand, ts
-
-    def update_init(self, init, sol, t, s):
-        # update state variables and first-stage solution.
-        for i in range(self.data.I):
-            init.eI_hat[i, t] = sol['eI'][i, t - 1]
-        for j in range(self.data.J):
-            init.lJ_hat[j, t] = sol['lJ'][j, t - 1]
-            init.eJ_hat[j, t] = sol['eJ'][j, t - 1]
-            # 'z' variables are only optimized at t = 0
-            if t - 1 == 0:
-                for t_ in range(self.data.T):
-                    init.zJ_hat[j, t_] = sol['zJ'][j, t_]
-        init.t = t
-        if self.args['eval'] == 'oos':
-            init.demand_tprime = self.data.demand_oos[s][t]
-        else:
-            state = self.data.test_samples_from_tree[s][t]
-            init.demand_tprime = self.data.demand_mssp[t][state]
-        init.last_stage = True if t == self.data.ts_oos[s] else False
-        init.T_PRIME = list(range(t, self.data.T))
-        demand, ts = self.in_sample_scen_for_slam(s, t)
-        init.demand_insample = demand
-        init.ts = ts
-        init.T_2ND = {s: init.T_PRIME[1:] for s in range(self.data.S)}
-
-    def solve_rolling_horizon(self):
-        self.result_alg = {}
-        self.result_cost = []
-        start_time = time.time()
-        for s in range(self.args['n_oos']):
-            test_time = time.time() - start_time
-            if test_time > self.args['time_limit_test']:
-                break
-            cost = copy.deepcopy(self.cost_t0)
-            sol = copy.deepcopy(self.sol_t0)
-            init = InitSLAM(self.data)
-            for t in range(1, self.data.ts_oos[s] + 1):
-                self.update_init(init, sol, t, s)
-                # solve SLAM with initial conditions.
-                solve_slam = SolveSLAM(self.data, init, **self.args)
-                print(f'Solving SLAM for OOS = {s} at t = {t} \n')
-                solve_slam.solve()
-                self.comp_time += solve_slam.comp_time
-                master_prob_cost = solve_slam.slam.obj(
-                    solve_slam.slam.master, option=2
-                    )
-                cost_tprime = {
-                    name: cost[0] for name, cost in
-                    master_prob_cost.items() if name != 'Fixed'
-                    }
-                for name, val in cost_tprime.items():
-                    if name not in list(self.cost_t0.keys()):
-                        print('error! bug found on cost dictionary')
-                        exit(0)
-                    if name != 'Fixed':
-                        cost[name] += val
-                sol = solve_slam.slam.solution(solve_slam.slam.master)
-                print('\nSLAM obj = {:.2f}, Cost at t{} = {:.2f}, '.format(
-                    solve_slam.slam.master.objVal,
-                    t,
-                    sum(cost_tprime.values()),
-                    ) +
-                    'proportion = {:.2f} % \n'.format(
-                        100 * sum(cost_tprime.values()) /
-                        solve_slam.slam.master.objVal,
-                    ))
-            total_rh_cost = sum(cost.values())
-            print('\ns = {} \t rh cost = {:.2f} \n'.format(s, total_rh_cost))
-            self.result_alg[s] = {
-                'rh_cost': total_rh_cost,
-                'comp_time': self.comp_time,
-                'lj': vars(init)['lJ_hat'][:, 1:].tolist(),
-                }
-            df_comp = pd.DataFrame(cost, index=[s])
-            df_comp['Total'] = df_comp.sum(axis=1)
-            self.result_cost.append(df_comp)
-            self.export()
-
-    def export(self):
-        with open(
-                self.data.DIR[4] + 'rh_{}.json'.format(self.args['method']),
-                'w'
-                ) as file:
-            json.dump(self.result_alg, file, indent=4)
-        # Create DataFrame of OOS cost components.
-        result_df = pd.concat(self.result_cost).rename_axis('s').round(2)
-        result_df.to_csv(
-            self.data.DIR[4] + "rh_eval_{}_{}.csv".format(
-                self.args['eval'],
-                self.args['method'],
-                )
-            )
-        summary = helper.summerize_result(result_df)
-        summary.to_csv(
-            self.data.DIR[4] + "summary_rh_eval_{}_{}.csv".format(
-                self.args['eval'],
-                self.args['method'],
-                )
-            )

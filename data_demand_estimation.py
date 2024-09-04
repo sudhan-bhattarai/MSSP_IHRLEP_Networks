@@ -206,9 +206,6 @@ def sample_paths_to_demand(data, args, err, S, tprime=0, FE_CLASS=None):
                 else:
                     along_err, cross_err = list(createErrorSamples(data=FE_CLASS, err=ERR, S=data.S, t=t, oos_err_at_t=err[ERR][s][t])
                                                 for ERR in ["along", "cross"])
-                    if args['fix_along_err'] is True:
-                        for scen in range(along_err.shape[0]):
-                            along_err[scen, :] = 0.0
                     ts_temp = [T-1] * data.S
                     for s_ in range(data.S):
                         errors_temp = list(zip(along_err[s_, :], cross_err[s_, :]))
@@ -311,8 +308,8 @@ class Demand:
             Number of samples to generate.
         """
         if self.args['hurricane'] == 'Florence' and self.args['landfall'] == 'r':
-            path = self.PARAM.DIR[2] + '{}_{}_fix_along_{}.json'.format(
-                kind, self.args['landfall'], self.args['fix_along_err'],
+            path = self.PARAM.DIR[2] + '{}_{}.json'.format(
+                kind, self.args['landfall'],
             )
         else:
             path = self.PARAM.DIR[2] + '{}_{}.json'.format(kind, self.args['landfall'])
@@ -322,8 +319,6 @@ class Demand:
         if mode == "w":
             err = self.FE.oos_err if kind == "oos" else {err_name: createErrorSamples(data=self.FE, err=err_name, S=S, t=0, oos_err_at_t=0)
                                                          for err_name in self.FE.err_type}
-            if self.args['fix_along_err'] is True:
-                err['along'] = np.zeros(np.array(err['along']).shape)
             DF, track_scen, cat_scen, ts, Ets = sample_paths_to_demand(self.PARAM, self.args, err, S, 0, self.FE)
             ts, cat_scen, DF = dict(enumerate(ts)), dict(enumerate(cat_scen)), dict(enumerate(DF))
             export = {name: val for name, val in zip(names, [ts, cat_scen, DF])}
@@ -337,8 +332,6 @@ class Demand:
 
     def markov_chain_state_space(self):
         err_a = self.FE.err_tree['along'][self.ST_along]  # list of discrete 'along' errors
-        if self.args['fix_along_err'] is True:
-            err_a = {a: np.zeros(len(lst)) for a, lst in err_a.items()}
         err_c = self.FE.err_tree['cross'][self.ST_cross]  # list of discrete 'cross' errors
         if self.args['landfall'] == 'd':
             err_t = self.FE.err_tree['track'][self.ST_track]  # list of discrete 'track' errors
@@ -349,8 +342,6 @@ class Demand:
         for t in range(self.PARAM.T):
             if self.args['landfall'] == 'd':
                 state_space[t] = list(itertools.product(err_t[t], cat[t]))
-            elif self.args['fix_along_err'] is True:
-                state_space[t] = list(itertools.product(err_c[t], cat[t]))
             else:
                 state_space[t] = list(itertools.product(err_a[t], err_c[t], cat[t]))
         ST = [len(state_space[t]) for t in range(self.PARAM.T)]
@@ -369,9 +360,6 @@ class Demand:
             for s1 in state_space[t]:
                 if self.args['landfall'] == 'd':
                     absorb = False
-                elif self.args['fix_along_err'] is True:
-                    scen = helper.transform_gis_random_landfall(self.PARAM, t, [0, s1[0]])
-                    absorb = self.characterize_absorbing_state(Point(scen))
                 else:
                     scen = helper.transform_gis_random_landfall(self.PARAM, t, [s1[0], s1[1]])
                     absorb = self.characterize_absorbing_state(Point(scen))
@@ -384,9 +372,6 @@ class Demand:
                         if self.args['landfall'] == 'd':
                             prob_i = self.pi_int[s1[1]][s2[1]]
                             prob_t = self.FE.pi_tree["track"][self.ST_track][t][s1[0]][s2[0]]
-                        elif self.args['fix_along_err'] is True:
-                            prob_i = self.pi_int[s1[1]][s2[1]]
-                            prob_t = self.FE.pi_tree["cross"][self.ST_cross][t][s1[0]][s2[0]]
                         else:
                             prob_i = self.pi_int[s1[2]][s2[2]]
                             prob_a = self.FE.pi_tree["along"][self.ST_along][t][s1[0]][s2[0]]
@@ -414,9 +399,9 @@ class Demand:
                     demand_mssp[t][state] = demand_deterministic_landfall(data=self.PARAM, hurr_pos=pos, hurr_cat=hurr_cat, t=t)
                 else:
                     pos = helper.transform_gis_random_landfall(
-                        self.PARAM, t, ([0, state[0]] if self.args['fix_along_err'] is True else state[:2])
+                        self.PARAM, t, state[:2],
                     )
-                    hurr_cat = state[1] if self.args['fix_along_err'] is True else state[2]
+                    hurr_cat = state[2]
                     demand_mssp[t][state] = demand_random_landfall(data=self.PARAM, hurr_pos=pos, hurr_cat=hurr_cat, t=t, ts=ts_mssp[t][state])
         return demand_mssp
 
@@ -448,13 +433,9 @@ class Demand:
         names = ['ts_mssp', 'absorb_mssp', 'demand_mssp', 'pi_mssp', 'test_samples_from_tree',
                  'in_sample_from_tree_2ssp']
         if self.args['hurricane'] == 'Florence' and self.args['landfall'] == 'r':
-            paths = list(self.PARAM.DIR[2] + '{}_{}_fix_along_{}.json'.format(
-                name, self.args['landfall'], self.args['fix_along_err'],
+            paths = list(self.PARAM.DIR[2] + '{}_{}.json'.format(
+                name, self.args['landfall'],
                 ) for name in names)
-            if self.args['fix_along_err'] is True:
-                for i, path in enumerate(paths):
-                    name = path.split('.')[0]
-                    paths[i] = name + '_ST_cross_{}'.format(self.ST_cross) + '.json'
         elif self.args['landfall'] == 'd':
             paths = list(self.PARAM.DIR[2] + '{}_{}_ST_track_{}.json'.format(
                 name, self.args['landfall'], self.ST_track,
@@ -509,7 +490,6 @@ Not all commandas are used in demand estimation hence can be ignored. The args c
 if __name__ == '__main__':
     importlib.reload(commands)  # rea the updated command from .csv file.
     args = commands.get_commands()[-1]  # get the respective arguments of the instance configuration.
-    args['fix_along_err'] = bool(args['fix_along_err'])
     pd.DataFrame(args, index=['value']).transpose().rename_axis('arg')
 
 """## Read numeric inputs, logistrics parameters, and forecast error data"""

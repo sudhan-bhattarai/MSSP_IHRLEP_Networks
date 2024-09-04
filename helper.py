@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import copy
+import os
 
 
 def json_export_conversion(file, name=None):
@@ -208,3 +209,16 @@ def compute_total_demand(data, samples):
                 demand[s][t][i] = \
                     remaining[s][t][i] * samples[s][t][i]
     return demand
+
+
+def export_models(models, data):
+    path = data.DIR[4] + 'Models/'
+    os.makedirs(path) if os.path.isdir(path) is False else None
+    for key, model in models.items():
+        model.m.write(path + f'{key}.mps')
+
+
+def transform_keys(d):
+    if isinstance(d, dict):
+        return {str(k): transform_keys(v) for k, v in d.items()}
+    return d

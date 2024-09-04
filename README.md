@@ -16,15 +16,15 @@ This project requires the following Python libraries:
 
 # General Workflow
 
-1. **Data Collection and Network Setup**: Gather initial data and establish logistics network parameters for all instances.
+1. **Data Collection and Network Setup**: Gather initial data and establish logistics network parameters for all instances. Important files associated with this module are *data_initial_inputs.py* and *data_process_network_data.py*.
    
-2. **Forecast Error Analysis**: Analyze forecast error data to estimate Autoregressive model parameters for each error type (track, along, cross, intensity).
+2. **Forecast Error Analysis**: Analyze forecast error data to estimate Autoregressive model parameters for each error type (track, along, cross, intensity). An important file associated with this module is *data_forecast_error_data_analysis.py*.
 
-3. **Scenario Generation**: Use the estimated Autoregressive model parameters to create forecast error scenarios. Construct a Markov Chain model for track, along, and cross errors using discretized error samples and transition probabilities.
+3. **Forecast Error Scenario Generation**: Use the estimated Autoregressive model parameters to create forecast error scenarios. Construct a Markov Chain model for track, along, and cross errors using discretized error samples and transition probabilities. An important file associated with this module is *data_forecast_error_scenarios.py*.
 
-4. **Demand Estimation and Scenario Mapping**: Map the forecast error scenarios to estimate demand for out-of-sample scenarios, in-sample scenarios for two-stage models, and the discretized Markov Chain model.
+4. **Demand Estimation and Scenario Mapping**: Map the forecast error scenarios to estimate demand for out-of-sample scenarios, in-sample scenarios for two-stage models, and the discretized Markov Chain model. Important files associated with this module are *data_demand_estimation.py*, and *data_main.py*.
 
-5. **Solving the models**: Solve an optimization model using the data for a specific instance and configuration.
+5. **Solving the models**: Solve an optimization model using the data for a specific instance and configuration. Important files associated with this module are *sddp.py*, and *two_stage.py*.
 
 # Commands
 Creating instances or solving the models can be done by giving appropriate commands to main.py. A brief details of the meaning of arguments can be found with: *python main.py --help*
@@ -57,7 +57,7 @@ To solve models: *python main.py --task solve* should be used. Some examples are
 - All Python scripts are located in the parent directory.
 - The input data for the optimization model is organized in the `Data/` directory.
 
-## Data/ Directory
+## Data Directory
 
 - **problem_size_opt.csv**: Describes the problem size with the number of demand points (I) and shelter points (J).
 - **us_GIS.json**: Contains the geometry of the US map and state boundaries.
@@ -121,3 +121,12 @@ Instance-specific data for various combinations of demand points (I) and shelter
 The results are stored at *~/Results/{--hurricane}/instance{--instance}/ff{--ffact}_gf{--gfact}_pf{--pfact}_pcost{--pcost}/file_name.ext* for the respective commands.
 - algorithm solutions are saved by using the method names: bb, bc, sddp etc.
 - the test sample costs are named as 'eval'.
+
+# Miscellaneous Notes
+- File *helper.py* includes functions that are rather repetative and of general purpose. It is imported at different modules as per needed
+- Files *results_analysis.py* and *plot_gis.py* are used to create summary of the results and plots after getting the results. These files are executed rather individually as they are not incorporated in *main.py*.
+- File *commands.py* is used to create argument inputs to *main.py* for data creation and solving the models. File *commands_defaults.csv* has the default values of arguments on *commands.py*.
+- command --landfall is useless when --hurricane is specified. It is only used to indicate the landfall characterization of the chosen case study.
+
+# Contact
+Please email your questions or comments to *sudhanb@clemson.edu*
