@@ -1,9 +1,9 @@
 from data_main import Data
 import two_stage
 import sddp
-import results_analysis as ra
+import results_analysis_archive as ra
 import commands
-from plot_gis import Plot
+from plot_gis_archive import Plot
 
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter as arg_help_format

@@ -1,16 +1,16 @@
 arg value
 task solve
-hurricane Ian
+hurricane Florence
 landfall d
 model mssp
 method bb
 instance 3
-eval mc_tree
+eval both
 gfact 100
 pfact 200
 ffact 5
 purchase_cost 5.0
-time_limit_train 30
+time_limit_train 3600
 time_limit_test 3600
 n_oos 1000
 n_UB_samples 1000
@@ -18,4 +18,4 @@ oos_heur 1
 first_stg_opt 1
 delay 2
 data_opt 2
-ST_track 5
+ST_track 15
