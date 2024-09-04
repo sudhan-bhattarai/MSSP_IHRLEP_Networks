@@ -1,3 +1,6 @@
+# Journal paper
+*S. Bhattarai and Y. Song, "Multi-stage Stochastic Programming for Integrated Network Optimization in Hurricane Relief Logistics and Evacuation Planning", Accepted for Publication at Networks, 2024.*
+
 # Dependencies
 
 This project requires the following Python libraries:
