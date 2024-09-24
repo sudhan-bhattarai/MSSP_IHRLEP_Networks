@@ -1,5 +1,5 @@
 # Journal paper
-*S. Bhattarai and Y. Song, "Multi-stage Stochastic Programming for Integrated Network Optimization in Hurricane Relief Logistics and Evacuation Planning", Accepted for Publication at Networks, 2024.*
+*S. Bhattarai and Y. Song, Multistage stochastic programming for integrated networkoptimization in hurricane relief logistics and evacuation planning, Networks. (2024), 1–35. https://doi.org/10.1002/net.22249*
 
 # Dependencies
 
